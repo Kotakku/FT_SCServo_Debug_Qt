@@ -49,6 +49,7 @@ private slots:
     // servo control
     void onGoalSliderValueChanged();
     void onSetBuggonClicked();
+    void onTorqueEnableCheckBoxStateChanged();
 
     // auto debug
     void onSweepButtonClicked();

@@ -98,6 +98,7 @@ void MainWindow::setupServoControl()
     setIntRangeLineEdit(ui->timeLineEdit, 0, std::numeric_limits<int>::max());
     
     connect(ui->setPushButton, &QPushButton::clicked, this, &MainWindow::onSetBuggonClicked);
+    connect(ui->torqueEnableCheckBox, &QCheckBox::stateChanged, this, &MainWindow::onTorqueEnableCheckBoxStateChanged);
 }
 
 void MainWindow::setupAutoDebug()
@@ -323,6 +324,11 @@ void MainWindow::onSetBuggonClicked()
     
     scserial_->rotation_mode(select_id_);
     scserial_->write_pos_ex(select_id_, goal, speed, acc);
+}
+
+void MainWindow::onTorqueEnableCheckBoxStateChanged()
+{
+    scserial_->enable_torque(select_id_, ui->torqueEnableCheckBox->isChecked());
 }
 
 void MainWindow::onSweepButtonClicked()

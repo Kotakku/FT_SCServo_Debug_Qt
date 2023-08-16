@@ -246,7 +246,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QCheckBox" name="torqueEnablecheckBox">
+           <widget class="QCheckBox" name="torqueEnableCheckBox">
             <property name="text">
              <string>Torque Enable</string>
             </property>
