@@ -7,10 +7,12 @@ Utility for Feetech SCS/STS servo
 - Qt Creator 6.0.2
 
 ## Dependices for servo board
-- CH341 driver
+- CH340 driver
 
 ## ⚠️Unported Features⚠️
-- Data analisis
+- Sync Write
+- Reg Write
+- Data analysis
 - Upgrade tab & features
 - PWM tabs & features
 
