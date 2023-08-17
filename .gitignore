@@ -1,2 +1,4 @@
 .vscode/
 *.user
+deb_root
+*.deb
