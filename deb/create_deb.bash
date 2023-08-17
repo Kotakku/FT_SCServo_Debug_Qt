@@ -29,3 +29,6 @@ echo "Maintainer: Kotakku <Kotakkucu@gmail.com>" >> ${DEB_ROOT}/DEBIAN/control
 echo "Description: FeeTech Servo Debug Qt" >> ${DEB_ROOT}/DEBIAN/control
 
 dpkg-deb --build -Z xz --root-owner-group ${DEB_ROOT} ${SCRIPT_DIR}/${DEB_NAME}.deb
+
+sudo rm -rf build/FT_SCServo_Debug_Qt deb_root/
+echo "Create deb package done!"
