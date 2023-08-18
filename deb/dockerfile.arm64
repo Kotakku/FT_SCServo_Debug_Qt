@@ -1,0 +1,23 @@
+FROM arm64v8/ubuntu:jammy
+
+ENV TZ=Asia/Tokyo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt update && apt install locales && \
+    locale-gen en_US en_US.UTF-8 && \
+    update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 && \
+    apt -y clean && \
+    rm -rf /var/lib/apt/lists/*
+ENV LANG=en_US.UTF-8
+
+RUN apt update && \
+    apt install -y \
+        libqt5serialport5 \
+        libqt5serialport5-dev \
+        qt5-qmake \
+        g++ \
+        cmake \
+        git
+
+WORKDIR /build
