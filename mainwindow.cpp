@@ -24,7 +24,9 @@ MainWindow::MainWindow(QWidget *parent)
     graph_timer_->start(30);
 
     serial_ = new QSerialPort(this);
-    scserial_ = new feetech_servo::SMS_STS(serial_);
+    scserial_ = new feetech_servo::SCSerial(serial_);
+    sms_sts_serial_ = new feetech_servo::SMS_STS(scserial_);
+    scs_serial_ = new feetech_servo::SCSCL(scserial_);
 
     setupComSettings();
     setupServoLists();
@@ -44,6 +46,7 @@ MainWindow::~MainWindow()
     delete graph_timer_;
     delete serial_;
     delete scserial_;
+    delete sms_sts_serial_;
     delete servo_list_model_;
     delete prog_mem_model_;
     delete port_search_timer_;
@@ -120,28 +123,7 @@ void MainWindow::setupProgramming()
 {
     prog_mem_model_ = new QStandardItemModel(0, 5);
     ui->memoryTableView->setModel(prog_mem_model_);
-    ui->memoryTableView->setSelectionMode(QAbstractItemView::SingleSelection);
-    ui->memoryTableView->setSelectionBehavior(QAbstractItemView::SelectionBehavior::SelectRows);
-    ui->memoryTableView->verticalHeader()->setVisible(false);
-    ui->memoryTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    ui->memoryTableView->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    ui->memoryTableView->setColumnWidth(0, 70);
-    ui->memoryTableView->setColumnWidth(2, 70);
-    ui->memoryTableView->setColumnWidth(3, 70);
-    ui->memoryTableView->setColumnWidth(4, 70);
-    ui->memoryTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    prog_mem_model_->setHorizontalHeaderLabels(QStringList() << "Address" << "Memory" << "Value" << "Area" << "R/W");
-
-    for(auto &item : feetech_servo::STSMemConfig)
-    {
-        auto &[address, name, size, default_value, is_eprom, is_readonly, min_val, max_val] = item;
-        QString area = is_eprom ? "EPROM" : "SRAM";
-        QString rw = is_readonly ? "R" : "R/W";
-        QList<QStandardItem*> rowList;
-
-        rowList << new QStandardItem(QString::number(address)) << new QStandardItem(name) << new QStandardItem(QString::number(default_value)) << new QStandardItem(area) << new QStandardItem(rw);
-        prog_mem_model_->appendRow(rowList);
-    }
+    clearProgMemTable();
 
     connect(ui->memoryTableView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &MainWindow::onMemoryTableSelection);
     connect(ui->memSetButton, &QPushButton::clicked, this, &MainWindow::onMemSetButtonClicked);
@@ -180,6 +162,39 @@ void MainWindow::appendServoList(const int id, const QString &name)
     servo_list_model_->appendRow(QList<QStandardItem*>() << new QStandardItem(QString::number(id)) << new QStandardItem(name));
 }
 
+void MainWindow::clearProgMemTable()
+{
+    prog_mem_model_->clear();
+    prog_mem_model_->setHorizontalHeaderLabels(QStringList() << "Address" << "Memory" << "Value" << "Area" << "R/W");
+    ui->memoryTableView->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->memoryTableView->setSelectionBehavior(QAbstractItemView::SelectionBehavior::SelectRows);
+    ui->memoryTableView->verticalHeader()->setVisible(false);
+    ui->memoryTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+    ui->memoryTableView->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    ui->memoryTableView->setColumnWidth(0, 70);
+    ui->memoryTableView->setColumnWidth(2, 70);
+    ui->memoryTableView->setColumnWidth(3, 70);
+    ui->memoryTableView->setColumnWidth(4, 70);
+    ui->memoryTableView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+}
+
+void MainWindow::updatePorgMemTable()
+{
+    clearProgMemTable();
+    auto mem_config = getMemConfig(select_servo_.model_);
+
+    for(auto &item : mem_config)
+    {
+        auto &[address, name, size, default_value, dir_bit, is_eprom, is_readonly, min_val, max_val] = item;
+        QString area = is_eprom ? "EPROM" : "SRAM";
+        QString rw = is_readonly ? "R" : "R/W";
+        QList<QStandardItem*> rowList;
+
+        rowList << new QStandardItem(QString::number(address)) << new QStandardItem(name) << new QStandardItem(QString::number(default_value)) << new QStandardItem(area) << new QStandardItem(rw);
+        prog_mem_model_->appendRow(rowList);
+    }
+}
+
 void MainWindow::setIntRangeLineEdit(QLineEdit *edit, int min, int max)
 {
     edit->setValidator(new QIntValidator(min, max, edit));
@@ -190,6 +205,36 @@ void MainWindow::setIntLineEdit(QLineEdit *edit)
     edit->setValidator(new QRegExpValidator(QRegExp("-?\\d*"), edit));
 }
 
+void MainWindow::selectServoSeries(feetech_servo::ModelSeries series)
+{
+    if(series == feetech_servo::ModelSeries::SCS)
+    {
+        scserial_->set_end(1);
+    }
+    else
+    {
+        scserial_->set_end(0);
+    }
+    select_servo_.model_ = series;
+    updatePorgMemTable();
+}
+
+const std::vector<feetech_servo::MemoryConfig>& MainWindow::getMemConfig(feetech_servo::ModelSeries series)
+{
+    switch(series)
+    {
+        case feetech_servo::ModelSeries::SCS:
+            return feetech_servo::SCSMemConfig;
+        case feetech_servo::ModelSeries::STS:
+            return feetech_servo::STSMemConfig;
+        case feetech_servo::ModelSeries::SMBL:
+            return feetech_servo::SMBLMemConfig;
+        case feetech_servo::ModelSeries::SMCL:
+            return feetech_servo::SMCLMemConfig;
+        default:
+            return feetech_servo::STSMemConfig;
+    }
+}
 
 
 void MainWindow::onPortSearchTimerTimeout()
@@ -209,7 +254,7 @@ void MainWindow::onConnectButtonClicked()
         serial_->close();
         ui->ComOpenButton->setText("Open");
         setEnableComSettings(true);
-        select_id_ = -1;
+        select_servo_.id_ = -1;
     }
     else {
         serial_->setPortName(ui->ComComboBox->currentText());
@@ -283,7 +328,8 @@ void MainWindow::onSearchTimerTimeout()
             int mid = scserial_->read_model_number(ret);
             QString name = feetech_servo::getModelType(mid);
             appendServoList(ret, name);
-            select_id_ = ret;
+            select_servo_.id_ = ret;
+            selectServoSeries(feetech_servo::getModelSeries(name));
         }
         search_id_++;
         search_timer_->start(1);
@@ -296,7 +342,9 @@ void MainWindow::onServoListSelection()
     QModelIndex selectedRows = ui->ServoListView->selectionModel()->selectedRows()[0];
     std::size_t row = selectedRows.row();
     auto index = servo_list_model_->index(row, 0);
-    select_id_ = servo_list_model_->data(index).toInt();
+    select_servo_.id_ = servo_list_model_->data(index).toInt();
+    index = servo_list_model_->index(row, 1);
+    selectServoSeries(feetech_servo::getModelSeries(servo_list_model_->data(index).toString()));
 }
 
 void MainWindow::onGoalSliderValueChanged()
@@ -304,11 +352,18 @@ void MainWindow::onGoalSliderValueChanged()
     int goal = ui->goalSlider->value();
     ui->goalLineEdit->setText(QString::number(goal));
 
-    if(serial_->isOpen() == false || select_id_ < 0)
+    if(serial_->isOpen() == false || select_servo_.id_ < 0)
         return;
     
-    scserial_->rotation_mode(select_id_);
-    scserial_->write_pos_ex(select_id_, goal, 0, 0);
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        scs_serial_->write_pos(select_servo_.id_, goal, 0, 0);
+    }
+    else
+    {
+        sms_sts_serial_->rotation_mode(select_servo_.id_);
+        sms_sts_serial_->write_pos_ex(select_servo_.id_, goal, 0, 0);
+    }
 }
 
 void MainWindow::onSetBuggonClicked()
@@ -319,16 +374,33 @@ void MainWindow::onSetBuggonClicked()
     // int time = ui->timeLineEdit->text().toUInt();
     ui->goalSlider->setValue(goal);
 
-    if(serial_->isOpen() == false || select_id_ < 0)
+    if(serial_->isOpen() == false || select_servo_.id_ < 0)
         return;
     
-    scserial_->rotation_mode(select_id_);
-    scserial_->write_pos_ex(select_id_, goal, speed, acc);
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        scs_serial_->write_pos(select_servo_.id_, goal, speed, acc);
+    }
+    else
+    {
+        sms_sts_serial_->rotation_mode(select_servo_.id_);
+        sms_sts_serial_->write_pos_ex(select_servo_.id_, goal, speed, acc);
+    }
 }
 
 void MainWindow::onTorqueEnableCheckBoxStateChanged()
 {
-    scserial_->enable_torque(select_id_, ui->torqueEnableCheckBox->isChecked());
+    if(!isServoValidNow())
+        return;
+    
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        scs_serial_->enable_torque(select_servo_.id_, ui->torqueEnableCheckBox->isChecked());
+    }
+    else
+    {
+        sms_sts_serial_->enable_torque(select_servo_.id_, ui->torqueEnableCheckBox->isChecked());
+    }
 }
 
 void MainWindow::onSweepButtonClicked()
@@ -349,7 +421,16 @@ void MainWindow::onSweepButtonClicked()
         ui->sweepButton->setText("Stop");
         ui->setpButton->setEnabled(false);
         latest_auto_debug_goal_ = ui->startLineEdit->text().toUInt();
-        scserial_->write_pos_ex(select_id_, latest_auto_debug_goal_, 0, 0);
+
+        if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+        {
+            scs_serial_->write_pos(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
+        else
+        {
+            sms_sts_serial_->rotation_mode(select_servo_.id_);
+            sms_sts_serial_->write_pos_ex(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
         auto_debug_timer_->start(ui->sweepLineEdit->text().toUInt());
     }
 }
@@ -373,7 +454,15 @@ void MainWindow::onSetpButtonClicked()
         ui->setpButton->setText("Stop");
         ui->sweepButton->setEnabled(false);
         latest_auto_debug_goal_ = ui->startLineEdit->text().toUInt();
-        scserial_->write_pos_ex(select_id_, latest_auto_debug_goal_, 0, 0);
+        if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+        {
+            scs_serial_->write_pos(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
+        else
+        {
+            sms_sts_serial_->rotation_mode(select_servo_.id_);
+            sms_sts_serial_->write_pos_ex(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
         auto_debug_timer_->start(ui->setpDelayLineEdit->text().toUInt());
     }
 }
@@ -404,7 +493,15 @@ void MainWindow::onAutoDebugTimerTimeout()
         {
             latest_auto_debug_goal_ = start;
         }
-        scserial_->write_pos_ex(select_id_, latest_auto_debug_goal_, 0, 0);
+        if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+        {
+            scs_serial_->write_pos(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
+        else
+        {
+            sms_sts_serial_->rotation_mode(select_servo_.id_);
+            sms_sts_serial_->write_pos_ex(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
     }
     else if(setp_running_)
     {
@@ -425,7 +522,15 @@ void MainWindow::onAutoDebugTimerTimeout()
             setp_increase_ = true;
         }
 
-        scserial_->write_pos_ex(select_id_, latest_auto_debug_goal_, 0, 0);
+        if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+        {
+            scs_serial_->write_pos(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
+        else
+        {
+            sms_sts_serial_->rotation_mode(select_servo_.id_);
+            sms_sts_serial_->write_pos_ex(select_servo_.id_, latest_auto_debug_goal_, 0, 0);
+        }
     }
     else
     {
@@ -449,19 +554,20 @@ void MainWindow::onProgTimerTimeout()
     int lastVisibleRow = ui->memoryTableView->indexAt(ui->memoryTableView->viewport()->rect().bottomLeft()).row();
     if (firstVisibleRow != -1 && lastVisibleRow != -1)
     {
+        auto mem_config = getMemConfig(select_servo_.model_);
         for(int i = firstVisibleRow; i <= lastVisibleRow; i++)
         {
             // メモリ更新
-            auto &[address, name, size, default_value, is_eprom, is_readonly, min_val, max_val] = feetech_servo::STSMemConfig[i];
+            auto &[address, name, size, default_value, dir_bit, is_eprom, is_readonly, min_val, max_val] = mem_config[i];
             
             int val = 0;
             if(size == 2)
             {
-                val = scserial_->read_word(select_id_, address);
+                val = scserial_->read_word(select_servo_.id_, address);
             }
             else
             {
-                val = scserial_->read_byte(select_id_, address);
+                val = scserial_->read_byte(select_servo_.id_, address);
             }
 
             ui->memoryTableView->model()->setData(ui->memoryTableView->model()->index(i,2), QString::number(val));
@@ -476,7 +582,8 @@ void MainWindow::onMemoryTableSelection()
     auto index = prog_mem_model_->index(row, 1);
     ui->memLabel->setText(prog_mem_model_->data(index).toString());
     ui->memSetLineEdit->setText(prog_mem_model_->data(prog_mem_model_->index(row, 2)).toString());
-    bool is_readonly = feetech_servo::STSMemConfig[row].is_readonly;
+    auto mem_config = getMemConfig(select_servo_.model_);
+    bool is_readonly = mem_config[row].is_readonly;
     if(is_readonly)
     {
         ui->memSetLineEdit->setEnabled(false);
@@ -493,25 +600,28 @@ void MainWindow::onMemSetButtonClicked()
 {
     is_mem_writing_ = true;
     QModelIndex selectedRows = ui->memoryTableView->selectionModel()->selectedRows().first();
-    auto &[address, name, size, default_value, is_eprom, is_readonly, min_val, max_val] = feetech_servo::STSMemConfig[selectedRows.row()];
+    auto mem_config = getMemConfig(select_servo_.model_);
+    auto &[address, name, size, default_value, dir_bit, is_eprom, is_readonly, min_val, max_val] = mem_config[selectedRows.row()];
 
+    // Todo address参照じゃなくする
     if(address == 5)
     {
+        // Toso: STSサーボ以外に対応する
         uint8_t val = ui->memSetLineEdit->text().toShort();
-        scserial_->write_byte(select_id_, 55, 0); // unlock
-        scserial_->write_byte(select_id_, address, val);
-        scserial_->write_byte(select_id_, 55, 1); // lock
-        select_id_ = val;
+        scserial_->write_byte(select_servo_.id_, 55, 0); // unlock
+        scserial_->write_byte(select_servo_.id_, address, val);
+        scserial_->write_byte(select_servo_.id_, 55, 1); // lock
+        select_servo_.id_ = val;
     }
     if(size == 2)
     {
         int16_t val = ui->memSetLineEdit->text().toShort();
-        scserial_->write_word(select_id_, address, val);
+        scserial_->write_word(select_servo_.id_, address, val);
     }
     else
     {
         uint8_t val = ui->memSetLineEdit->text().toShort();
-        scserial_->write_byte(select_id_, address, val);
+        scserial_->write_byte(select_servo_.id_, address, val);
     }
     is_mem_writing_ = false;
 }
@@ -523,7 +633,7 @@ void MainWindow::onGraphTimerTimeout()
     ui->graphWidget->horizontal = ui->horizontalSlider->value();
     ui->graphWidget->zoom = ui->zoomSlider->value();
 
-    if(is_searching_ || !serial_->isOpen() || select_id_ < 0)
+    if(is_searching_ || !serial_->isOpen() || select_servo_.id_ < 0)
         return;
 
     ui->positionLabel->setText(QString::number(latest_status_.pos));
@@ -549,28 +659,56 @@ void MainWindow::onServoReadTimerTimeout()
         return;
     
     static int count = 0;
-    if (serial_->isOpen() && select_id_ >= 0 && !is_searching_)
+    if (isServoValidNow())
     {
-        switch(count)
+        if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
         {
-            case 0:
-                latest_status_.pos = scserial_->read_position(select_id_);
-                latest_status_.torque = scserial_->read_load(select_id_);
-                break;
+            switch(count)
+            {
+                case 0:
+                    latest_status_.pos = scs_serial_->read_position(select_servo_.id_);
+                    latest_status_.torque = scs_serial_->read_load(select_servo_.id_);
+                    break;
 
-            case 1:
-                latest_status_.speed = scserial_->read_speed(select_id_);
-                latest_status_.current = scserial_->read_current(select_id_);
-                latest_status_.temp = scserial_->read_temperature(select_id_);
-                break;
+                case 1:
+                    latest_status_.speed = scs_serial_->read_speed(select_servo_.id_);
+                    latest_status_.current = scs_serial_->read_current(select_servo_.id_);
+                    break;
 
-            case 2:
-                latest_status_.voltage = scserial_->read_voltage(select_id_);
-                latest_status_.move = scserial_->read_move(select_id_);
-                latest_status_.goal = scserial_->read_goal(select_id_);
-                ui->graphWidget->append_data(latest_status_.pos, latest_status_.torque, latest_status_.speed, latest_status_.current, latest_status_.temp, latest_status_.voltage);
-                break;
+                case 2:
+                    latest_status_.temp = scs_serial_->read_temperature(select_servo_.id_);
+                    latest_status_.voltage = scs_serial_->read_voltage(select_servo_.id_);
+                    latest_status_.move = scs_serial_->read_move(select_servo_.id_);
+                    latest_status_.goal = scs_serial_->read_goal(select_servo_.id_);
+                    ui->graphWidget->append_data(latest_status_.pos, latest_status_.torque, latest_status_.speed, latest_status_.current, latest_status_.temp, latest_status_.voltage);
+                    break;
+            }
         }
+        else
+        {
+            switch(count)
+            {
+                case 0:
+                    latest_status_.pos = sms_sts_serial_->read_position(select_servo_.id_);
+                    latest_status_.torque = sms_sts_serial_->read_load(select_servo_.id_);
+                    break;
+
+                case 1:
+                    latest_status_.speed = sms_sts_serial_->read_speed(select_servo_.id_);
+                    latest_status_.current = sms_sts_serial_->read_current(select_servo_.id_);
+                    latest_status_.temp = sms_sts_serial_->read_temperature(select_servo_.id_);
+                    break;
+
+                case 2:
+                    latest_status_.voltage = sms_sts_serial_->read_voltage(select_servo_.id_);
+                    latest_status_.move = sms_sts_serial_->read_move(select_servo_.id_);
+                    latest_status_.goal = sms_sts_serial_->read_goal(select_servo_.id_);
+                    ui->graphWidget->append_data(latest_status_.pos, latest_status_.torque, latest_status_.speed, latest_status_.current, latest_status_.temp, latest_status_.voltage);
+                    break;
+            }
+        }
+
+
         count++;
         count %= 3;
     }

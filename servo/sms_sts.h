@@ -1,17 +1,9 @@
-#ifndef SCSERIAL_H
-#define SCSERIAL_H
+#pragma once
 
-#include <QObject>
-#include <QSerialPort>
-#include <QString>
+#include "servo/scserial.h"
 
-#define INST_PING 0x01
-#define INST_READ 0x02
-#define INST_WRITE 0x03
-#define INST_REG_WRITE 0x04
-#define INST_REG_ACTION 0x05
-#define INST_SYNC_READ 0x82
-#define INST_SYNC_WRITE 0x83
+namespace feetech_servo
+{
 
 //-------EPROM(只读)--------
 #define SMS_STS_MODEL_L 3
@@ -56,60 +48,14 @@
 #define SMS_STS_PRESENT_CURRENT_L 69
 #define SMS_STS_PRESENT_CURRENT_H 70
 
-#include "servo_mem_config.h"
-
-namespace feetech_servo
-{
-
-QString getModelType(uint16_t id);
-
-class SCSerial
+class SMS_STS
 {
 public:
-    SCSerial(QSerialPort *serial);
-
-	int gen_write(uint8_t id, uint8_t mem_addr, uint8_t *n_dat, uint8_t n_len);
-	int reg_write(uint8_t id, uint8_t mem_addr, uint8_t *n_dat, uint8_t n_len);
-	int reg_write_action(uint8_t id = 0xfe);
-	void sync_write(uint8_t id[], uint8_t idn, uint8_t mem_addr, uint8_t *n_dat, uint8_t n_len);
-	int write_byte(uint8_t id, uint8_t mem_addr, uint8_t b_dat);
-	int write_word(uint8_t id, uint8_t mem_addr, uint16_t w_dat);
-	int read(uint8_t id, uint8_t mem_addr, uint8_t *n_data, uint8_t n_len);
-    int read_byte(uint8_t id, uint8_t mem_addr);
-    int read_word(uint8_t id, uint8_t mem_addr);
-    int ping(uint8_t id);
-	int write(uint8_t *n_dat, int n_len);
-	int read(uint8_t *n_dat, int n_len);
-	int write(uint8_t b_dat);
-	void read_flush() { /* do not anything */ }
-	void write_flush() { /* do not anything */}
-
-    void set_timeout(uint16_t timeout) { timeout_ = timeout; }
-
-protected:
-    void write_buf(uint8_t id, uint8_t mem_addr, uint8_t *n_dat, uint8_t n_len, uint8_t fun);
-    void host_2_scs(uint8_t *data_l, uint8_t* data_h, uint16_t data);
-    uint16_t scs_2_host(uint8_t data_l, uint8_t data_h);
-    int	ask(uint8_t id);
-    int check_head();
-
-protected:
-	uint8_t level_;//舵机返回等级
-	uint8_t end_;// 处理器大小端结构 ビックエンディアンかリトルエンディアンか
-	uint8_t error_;// サーボのステータス 舵机状态
-	uint8_t sync_read_rx_packet_index_;
-	uint8_t sync_read_rx_packet_len_;
-	uint8_t *sync_read_rx_packet_;
-    int err_;
-
-    QSerialPort *serial_;
-    uint16_t timeout_ = 50;
-};
-
-class SMS_STS : public SCSerial
-{
-public:
-    using SCSerial::SCSerial;
+    SMS_STS(SCSerial *scserial_)
+        : scserial_(scserial_)
+    {
+        // scserial_->set_end(0);
+    }
 
 	int write_pos_ex(uint8_t ID, int16_t Position, uint16_t Speed, uint8_t ACC = 0)//普通写单个舵机位置指令
     {
@@ -119,11 +65,11 @@ public:
         }
         uint8_t bBuf[7];
         bBuf[0] = ACC;
-        host_2_scs(bBuf+1, bBuf+2, Position);
-        host_2_scs(bBuf+3, bBuf+4, 0);
-        host_2_scs(bBuf+5, bBuf+6, Speed);
+        scserial_->host_2_scs(bBuf+1, bBuf+2, Position);
+        scserial_->host_2_scs(bBuf+3, bBuf+4, 0);
+        scserial_->host_2_scs(bBuf+5, bBuf+6, Speed);
         
-        return gen_write(ID, SMS_STS_ACC, bBuf, 7);
+        return scserial_->gen_write(ID, SMS_STS_ACC, bBuf, 7);
     }
 
 	int reg_write_pos_ex(uint8_t ID, int16_t Position, uint16_t Speed, uint8_t ACC = 0)//异步写单个舵机位置指令(RegWriteAction生效)
@@ -134,11 +80,11 @@ public:
         }
         uint8_t bBuf[7];
         bBuf[0] = ACC;
-        host_2_scs(bBuf+1, bBuf+2, Position);
-        host_2_scs(bBuf+3, bBuf+4, 0);
-        host_2_scs(bBuf+5, bBuf+6, Speed);
+        scserial_->host_2_scs(bBuf+1, bBuf+2, Position);
+        scserial_->host_2_scs(bBuf+3, bBuf+4, 0);
+        scserial_->host_2_scs(bBuf+5, bBuf+6, Speed);
         
-        return reg_write(ID, SMS_STS_ACC, bBuf, 7);
+        return scserial_->reg_write(ID, SMS_STS_ACC, bBuf, 7);
     }
 
 	void sync_write_pos_ex(uint8_t ID[], uint8_t IDN, int16_t Position[], uint16_t Speed[], uint8_t ACC[])//同步写多个舵机位置指令
@@ -160,26 +106,26 @@ public:
             }else{
                 offbuf[i*7] = 0;
             }
-            host_2_scs(offbuf+i*7+1, offbuf+i*7+2, Position[i]);
-            host_2_scs(offbuf+i*7+3, offbuf+i*7+4, 0);
-            host_2_scs(offbuf+i*7+5, offbuf+i*7+6, V);
+            scserial_->host_2_scs(offbuf+i*7+1, offbuf+i*7+2, Position[i]);
+            scserial_->host_2_scs(offbuf+i*7+3, offbuf+i*7+4, 0);
+            scserial_->host_2_scs(offbuf+i*7+5, offbuf+i*7+6, V);
         }
-        sync_write(ID, IDN, SMS_STS_ACC, offbuf, 7);
+        scserial_->sync_write(ID, IDN, SMS_STS_ACC, offbuf, 7);
     }
 
 	int rotation_mode(uint8_t ID)
     {
-        return write_byte(ID, SMS_STS_MODE, 0);
+        return scserial_->write_byte(ID, SMS_STS_MODE, 0);
     }
 
 	int wheel_mode(uint8_t ID)//恒速模式
     {
-        return write_byte(ID, SMS_STS_MODE, 1);
+        return scserial_->write_byte(ID, SMS_STS_MODE, 1);
     }
 
 	int open_loop_wheel_mode(uint8_t ID)
     {
-        return write_byte(ID, SMS_STS_MODE, 2);
+        return scserial_->write_byte(ID, SMS_STS_MODE, 2);
     }
     
 	int write_speed(uint8_t ID, int16_t Speed, uint8_t ACC = 0)//恒速模式控制指令
@@ -190,54 +136,41 @@ public:
         }
         uint8_t bBuf[2];
         bBuf[0] = ACC;
-        gen_write(ID, SMS_STS_ACC, bBuf, 1);
-        host_2_scs(bBuf+0, bBuf+1, Speed);
+        scserial_->gen_write(ID, SMS_STS_ACC, bBuf, 1);
+        scserial_->host_2_scs(bBuf+0, bBuf+1, Speed);
         
-        return gen_write(ID, SMS_STS_GOAL_SPEED_L, bBuf, 2);
+        return scserial_->gen_write(ID, SMS_STS_GOAL_SPEED_L, bBuf, 2);
     }
 
 	int enable_torque(uint8_t ID, uint8_t Enable)//扭力控制指令
     {
-        return write_byte(ID, SMS_STS_TORQUE_ENABLE, Enable);
+        return scserial_->write_byte(ID, SMS_STS_TORQUE_ENABLE, Enable);
     }
 
 	int unlock_eprom(uint8_t ID)//eprom解锁
     {
-        return write_byte(ID, SMS_STS_LOCK, 0);
+        return scserial_->write_byte(ID, SMS_STS_LOCK, 0);
     }
 
 	int lock_eprom(uint8_t ID)//eprom加锁
     {
-        return write_byte(ID, SMS_STS_LOCK, 1);
+        return scserial_->write_byte(ID, SMS_STS_LOCK, 1);
     }
 
 	int calibration_offset(uint8_t ID)//中位校准
     {
-        return write_byte(ID, SMS_STS_TORQUE_ENABLE, 128);
+        return scserial_->write_byte(ID, SMS_STS_TORQUE_ENABLE, 128);
     }
 
 	int feedback(int ID)//反馈舵机信息
     {
-        int nLen = read(ID, SMS_STS_PRESENT_POSITION_L, Mem, sizeof(Mem));
+        int nLen = scserial_->read(ID, SMS_STS_PRESENT_POSITION_L, Mem, sizeof(Mem));
         if(nLen!=sizeof(Mem)){
             err_ = 1;
             return -1;
         }
         err_ = 0;
         return nLen;
-    }
-
-    int read_model_number(int ID)
-    {
-        int model_number = -1;
-        {
-            err_ = 0;
-            model_number = read_word(ID, SMS_STS_MODEL_L);
-            if(model_number==-1){
-                err_ = 1;
-            }
-        }
-        return model_number;
     }
 
 	int read_position(int ID)//读位置
@@ -249,7 +182,7 @@ public:
             Pos |= Mem[SMS_STS_PRESENT_POSITION_L-SMS_STS_PRESENT_POSITION_L];
         }else{
             err_ = 0;
-            Pos = read_word(ID, SMS_STS_PRESENT_POSITION_L);
+            Pos = scserial_->read_word(ID, SMS_STS_PRESENT_POSITION_L);
             if(Pos==-1){
                 err_ = 1;
             }
@@ -270,7 +203,7 @@ public:
             Speed |= Mem[SMS_STS_PRESENT_SPEED_L-SMS_STS_PRESENT_POSITION_L];
         }else{
             err_ = 0;
-            Speed = read_word(ID, SMS_STS_PRESENT_SPEED_L);
+            Speed = scserial_->read_word(ID, SMS_STS_PRESENT_SPEED_L);
             if(Speed==-1){
                 err_ = 1;
                 return -1;
@@ -291,7 +224,7 @@ public:
             Load |= Mem[SMS_STS_PRESENT_LOAD_L-SMS_STS_PRESENT_POSITION_L];
         }else{
             err_ = 0;
-            Load = read_word(ID, SMS_STS_PRESENT_LOAD_L);
+            Load = scserial_->read_word(ID, SMS_STS_PRESENT_LOAD_L);
             if(Load==-1){
                 err_ = 1;
             }
@@ -309,7 +242,7 @@ public:
             Voltage = Mem[SMS_STS_PRESENT_VOLTAGE-SMS_STS_PRESENT_POSITION_L];	
         }else{
             err_ = 0;
-            Voltage = read_byte(ID, SMS_STS_PRESENT_VOLTAGE);
+            Voltage = scserial_->read_byte(ID, SMS_STS_PRESENT_VOLTAGE);
             if(Voltage==-1){
                 err_ = 1;
             }
@@ -329,7 +262,7 @@ public:
             Temper = Mem[SMS_STS_PRESENT_TEMPERATURE-SMS_STS_PRESENT_POSITION_L];	
         }else{
             err_ = 0;
-            Temper = read_byte(ID, SMS_STS_PRESENT_TEMPERATURE);
+            Temper = scserial_->read_byte(ID, SMS_STS_PRESENT_TEMPERATURE);
             if(Temper==-1){
                 err_ = 1;
             }
@@ -344,7 +277,7 @@ public:
             Move = Mem[SMS_STS_MOVING-SMS_STS_PRESENT_POSITION_L];	
         }else{
             err_ = 0;
-            Move = read_byte(ID, SMS_STS_MOVING);
+            Move = scserial_->read_byte(ID, SMS_STS_MOVING);
             if(Move==-1){
                 err_ = 1;
             }
@@ -361,7 +294,7 @@ public:
             Current |= Mem[SMS_STS_PRESENT_CURRENT_L-SMS_STS_PRESENT_POSITION_L];
         }else{
             err_ = 0;
-            Current = read_word(ID, SMS_STS_PRESENT_CURRENT_L);
+            Current = scserial_->read_word(ID, SMS_STS_PRESENT_CURRENT_L);
             if(Current==-1){
                 err_ = 1;
                 return -1;
@@ -378,7 +311,7 @@ public:
         int Goal = -1;
         {
             err_ = 0;
-            Goal = read_word(ID, SMS_STS_GOAL_POSITION_L);
+            Goal = scserial_->read_word(ID, SMS_STS_GOAL_POSITION_L);
             if(Goal==-1){
                 err_ = 1;
                 return -1;
@@ -391,9 +324,9 @@ public:
     }
 
 private:
+    int err_ = 0;
+    SCSerial *scserial_;
     uint8_t Mem[SMS_STS_PRESENT_CURRENT_H-SMS_STS_PRESENT_POSITION_L+1];
 };
 
 }
-
-#endif // SCSERIAL_H

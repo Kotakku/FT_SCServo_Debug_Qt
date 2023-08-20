@@ -1,4 +1,4 @@
-#include "scserial.h"
+#include "servo/scserial.h"
 
 namespace feetech_servo
 {
@@ -76,6 +76,26 @@ QString getModelType(uint16_t id)
     return "Unknown";
 }
 #undef SERVO_MODEL
+
+ModelSeries getModelSeries(QString modelName)
+{
+    if(modelName.startsWith("STS"))
+    {
+        return STS;
+    }
+    else if(modelName.startsWith("SC"))
+    {
+        return SCS;
+    }
+    else if(modelName.startsWith("SM") && modelName.contains("BL"))
+    {
+        return SMBL;
+    }
+    else
+    {
+        return SMCL;
+    }
+}
 
 SCSerial::SCSerial(QSerialPort *serial)
     : serial_(serial)
@@ -341,6 +361,34 @@ int SCSerial::check_head()
         }
     }
     return 1;
+}
+
+int SCSerial::read_model_number(int id)
+{
+    int tmp = -1;
+    int model_number = -1;
+    {
+        error_ = 0;
+        tmp = read_byte(id, 3); // 3 : Servo Main Version, 4 : Servo Sub Version
+        if(tmp==-1){
+            error_ = 1;
+        }
+        else
+        {
+            model_number = tmp;
+            {
+                tmp = read_byte(id, 4);
+                if(tmp==-1){
+                    error_ = 1;
+                }
+                else
+                {
+                    model_number |= tmp<<8;
+                }
+            }
+        }
+    }
+    return model_number;
 }
 
 int SCSerial::write(uint8_t *n_dat, int n_len) {

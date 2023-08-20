@@ -6,7 +6,7 @@
 #include <QSerialPort>
 #include <QTableView>
 #include <QStandardItemModel>
-#include "scserial.h"
+#include "servo/scserial.h"
 #include <map>
 
 QT_BEGIN_NAMESPACE
@@ -31,10 +31,15 @@ private:
     void setEnableComSettings(bool state);
     void clearServoList();
     void appendServoList(const int id, const QString &name);
+    void clearProgMemTable();
+    void updatePorgMemTable();
     void setIntRangeLineEdit(QLineEdit *edit, int min, int max);
     void setIntLineEdit(QLineEdit *edit);
 
-    bool isServoValidNow() { return !(is_searching_ || !serial_->isOpen() || select_id_ < 0); }
+    bool isServoValidNow() { return !(is_searching_ || !serial_->isOpen() || select_servo_.id_ < 0); }
+
+    void selectServoSeries(feetech_servo::ModelSeries series);
+    const std::vector<feetech_servo::MemoryConfig>& getMemConfig(feetech_servo::ModelSeries series);
 
 private slots:
     // com
@@ -69,7 +74,9 @@ private:
     Ui::MainWindow *ui;
     QTimer *graph_timer_;
     QSerialPort *serial_;
-    feetech_servo::SMS_STS *scserial_;
+    feetech_servo::SCSerial *scserial_;
+    feetech_servo::SCSCL *scs_serial_;
+    feetech_servo::SMS_STS *sms_sts_serial_;
     QStandardItemModel *servo_list_model_;
     QStandardItemModel *prog_mem_model_;
     QTimer *port_search_timer_;
@@ -80,7 +87,11 @@ private:
 
     bool is_searching_ = false;
     int search_id_ = 0;
-    int select_id_ = -1;
+    struct
+    {
+        feetech_servo::ModelSeries model_;
+        int id_ = -1;
+    }select_servo_;
     bool sweep_running_ = false;
     bool setp_running_ = false;
     int latest_auto_debug_goal_ = 0;
