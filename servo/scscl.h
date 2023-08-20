@@ -71,7 +71,7 @@ public:
         return scserial_->reg_write(ID, SCSCL_GOAL_POSITION_L, bBuf, 6);
     }
 
-	void sync_write_pos_ex(uint8_t ID[], uint8_t IDN, uint16_t Position[], uint16_t Time[], uint16_t Speed[])//同步写多个舵机位置指令
+	void sync_write_pos(uint8_t ID[], uint8_t IDN, uint16_t Position[], uint16_t Time[], uint16_t Speed[])//同步写多个舵机位置指令
     {
         uint8_t offbuf[6*IDN];
         for(uint8_t i = 0; i<IDN; i++){

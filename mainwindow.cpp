@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QIntValidator>
 #include <QRegExpValidator>
+#include <QDir>
 #include <cmath>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -33,6 +34,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     setupServoControl();
     setupAutoDebug();
+    setupDataAnalysis();
 
     setupProgramming();
 
@@ -46,6 +48,7 @@ MainWindow::~MainWindow()
     delete graph_timer_;
     delete serial_;
     delete scserial_;
+    delete scs_serial_;
     delete sms_sts_serial_;
     delete servo_list_model_;
     delete prog_mem_model_;
@@ -93,6 +96,10 @@ void MainWindow::setupServoLists()
 
 void MainWindow::setupServoControl()
 {
+    connect(ui->writeRadioButton, &QRadioButton::toggled, this, &MainWindow::onModeRadioButtonsToggled);
+    connect(ui->syncWriteRadioButton, &QRadioButton::toggled, this, &MainWindow::onModeRadioButtonsToggled);
+    connect(ui->regWriteRadioButton, &QRadioButton::toggled, this, &MainWindow::onModeRadioButtonsToggled);
+
     connect(ui->goalSlider, &QSlider::valueChanged, this, &MainWindow::onGoalSliderValueChanged);
 
     setIntRangeLineEdit(ui->accLineEdit, 0, std::numeric_limits<int>::max());
@@ -102,6 +109,7 @@ void MainWindow::setupServoControl()
     
     connect(ui->setPushButton, &QPushButton::clicked, this, &MainWindow::onSetBuggonClicked);
     connect(ui->torqueEnableCheckBox, &QCheckBox::stateChanged, this, &MainWindow::onTorqueEnableCheckBoxStateChanged);
+    connect(ui->actionPushButton, &QPushButton::clicked, this, &MainWindow::onActionButtonClicked);
 }
 
 void MainWindow::setupAutoDebug()
@@ -117,6 +125,17 @@ void MainWindow::setupAutoDebug()
 
     auto_debug_timer_ = new QTimer(this);
     connect(auto_debug_timer_, &QTimer::timeout, this, &MainWindow::onAutoDebugTimerTimeout);
+}
+
+void MainWindow::setupDataAnalysis()
+{
+    connect(ui->exportPushButton, &QPushButton::clicked, this, &MainWindow::onExportButtonClicked);
+    connect(ui->clearPushButton, &QPushButton::clicked, this, &MainWindow::onClearButtonClicked);
+    setIntRangeLineEdit(ui->recTimeLineEdit, 0, std::numeric_limits<int>::max());
+
+    data_analysis_timer_ = new QTimer(this);
+    connect(data_analysis_timer_, &QTimer::timeout, this, &MainWindow::onDataAnalysisTimerTimeout);
+    data_analysis_timer_->start(50);
 }
 
 void MainWindow::setupProgramming()
@@ -236,6 +255,48 @@ const std::vector<feetech_servo::MemoryConfig>& MainWindow::getMemConfig(feetech
     }
 }
 
+void MainWindow::writePos(int pos, int time, int speed, int acc)
+{
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        scs_serial_->write_pos(select_servo_.id_, pos, time, speed);
+    }
+    else
+    {
+        sms_sts_serial_->rotation_mode(select_servo_.id_);
+        sms_sts_serial_->write_pos_ex(select_servo_.id_, pos, speed, acc);
+    }
+}
+
+void MainWindow::syncWritePos(int pos, int time, int speed, int acc)
+{
+    std::vector<uint16_t> times(id_list_.size(), time);
+    std::vector<uint16_t> speeds(id_list_.size(), speed);
+    std::vector<uint8_t> accs(id_list_.size(), acc);
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        std::vector<uint16_t> goals(id_list_.size(), pos);
+        scs_serial_->sync_write_pos(id_list_.data(), id_list_.size(), goals.data(), times.data(), speeds.data());
+    }
+    else
+    {
+        std::vector<int16_t> goals(id_list_.size(), pos);
+        sms_sts_serial_->sync_write_pos_ex(id_list_.data(), id_list_.size(), goals.data(), speeds.data(), accs.data());
+    }
+}
+
+void MainWindow::regWritePos(int pos, int time, int speed, int acc)
+{
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        scs_serial_->reg_write_pos(select_servo_.id_, pos, time, speed);
+    }
+    else
+    {
+        sms_sts_serial_->rotation_mode(select_servo_.id_);
+        sms_sts_serial_->reg_write_pos_ex(select_servo_.id_, pos, speed, acc);
+    }
+}
 
 void MainWindow::onPortSearchTimerTimeout()
 {
@@ -294,6 +355,7 @@ void MainWindow::onSearchButtonClicked()
     {
         ui->SearchButton->setText("Stop");
         clearServoList();
+        id_list_.clear();
         search_id_ = 0;
         search_timer_->start(10);
         onSearchTimerTimeout();
@@ -328,6 +390,7 @@ void MainWindow::onSearchTimerTimeout()
             int mid = scserial_->read_model_number(ret);
             QString name = feetech_servo::getModelType(mid);
             appendServoList(ret, name);
+            id_list_.push_back(ret);
             select_servo_.id_ = ret;
             selectServoSeries(feetech_servo::getModelSeries(name));
         }
@@ -352,17 +415,20 @@ void MainWindow::onGoalSliderValueChanged()
     int goal = ui->goalSlider->value();
     ui->goalLineEdit->setText(QString::number(goal));
 
-    if(serial_->isOpen() == false || select_servo_.id_ < 0)
+    if(!isServoValidNow())
         return;
     
-    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    if(mode_ == MODE_REG_WRITE)
     {
-        scs_serial_->write_pos(select_servo_.id_, goal, 0, 0);
+        regWritePos(goal, 0, 0, 0);
     }
-    else
+    else if(mode_ == MODE_SYNC_WRITE)
     {
-        sms_sts_serial_->rotation_mode(select_servo_.id_);
-        sms_sts_serial_->write_pos_ex(select_servo_.id_, goal, 0, 0);
+        syncWritePos(goal, 0, 0, 0);
+    }
+    else if(mode_ == MODE_WRITE)
+    {
+        writePos(goal, 0, 0, 0);
     }
 }
 
@@ -371,20 +437,23 @@ void MainWindow::onSetBuggonClicked()
     int goal = ui->goalLineEdit->text().toUInt();
     int speed = ui->speedLineEdit->text().toUInt();
     int acc = ui->accLineEdit->text().toUInt();
-    // int time = ui->timeLineEdit->text().toUInt();
+    int time = ui->timeLineEdit->text().toUInt();
     ui->goalSlider->setValue(goal);
 
-    if(serial_->isOpen() == false || select_servo_.id_ < 0)
+    if(!isServoValidNow())
         return;
     
-    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    if(mode_ == MODE_REG_WRITE)
     {
-        scs_serial_->write_pos(select_servo_.id_, goal, speed, acc);
+        regWritePos(goal, time, speed, acc);
     }
-    else
+    else if(mode_ == MODE_SYNC_WRITE)
     {
-        sms_sts_serial_->rotation_mode(select_servo_.id_);
-        sms_sts_serial_->write_pos_ex(select_servo_.id_, goal, speed, acc);
+        syncWritePos(goal, time, speed, acc);
+    }
+    else if(mode_ == MODE_WRITE)
+    {
+        writePos(goal, time, speed, acc);
     }
 }
 
@@ -400,6 +469,38 @@ void MainWindow::onTorqueEnableCheckBoxStateChanged()
     else
     {
         sms_sts_serial_->enable_torque(select_servo_.id_, ui->torqueEnableCheckBox->isChecked());
+    }
+}
+
+void MainWindow::onModeRadioButtonsToggled(bool checked)
+{
+    if(checked)
+    {
+        if(ui->writeRadioButton->isChecked())
+        {
+            mode_ = MODE_WRITE;
+        }
+        else if(ui->syncWriteRadioButton->isChecked())
+        {
+            mode_ = MODE_SYNC_WRITE;
+        }
+        else if(ui->regWriteRadioButton->isChecked())
+        {
+            mode_ = MODE_REG_WRITE;
+        }
+
+        ui->actionPushButton->setEnabled(mode_ == MODE_REG_WRITE);
+    }
+}
+
+void MainWindow::onActionButtonClicked()
+{
+    if(!isServoValidNow())
+        return;
+
+    if(mode_ == MODE_REG_WRITE)
+    {
+        scserial_->reg_write_action(select_servo_.id_);
     }
 }
 
@@ -535,6 +636,108 @@ void MainWindow::onAutoDebugTimerTimeout()
     else
     {
         auto_debug_timer_->stop();
+    }
+}
+
+void MainWindow::onExportButtonClicked()
+{
+    if(!isServoValidNow())
+        return;
+    
+    if(is_recording_)
+    {
+        is_recording_ = false;
+        ui->exportPushButton->setText("Export");
+        ui->clearPushButton->setEnabled(true);
+
+        if(!record_section_data_.isEmpty())
+        {
+            auto record_file_ = new QFile(record_file_name_);
+
+            if(!record_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+            {
+                qDebug() << "file open error: " << record_file_name_;
+                return;
+            }
+
+            auto record_stream_ = new QTextStream(record_file_);
+            *record_stream_ << record_section_data_;
+            record_section_data_.clear();
+
+            record_file_->close();
+        }
+        ui->recSizeLineEdit->setText(QString::number(record_data_count_));
+    }
+    else
+    {
+        is_recording_ = true;
+        ui->exportPushButton->setText("Stop");
+        ui->clearPushButton->setEnabled(false);
+        record_section_data_.clear();
+        record_data_count_ = 0;
+        file_write_interval_ = ui->recTimeLineEdit->text().toUInt();
+        if(file_write_interval_ == 0)
+            file_write_interval_ = 1;
+
+        record_file_name_ = ui->recFileNameLineEdit->text();
+
+#if defined(Q_OS_LINUX)
+        QString home_path = QDir::homePath();
+        if(record_file_name_.startsWith("~"))
+        {
+            record_file_name_.replace("~", home_path);
+        }
+#endif // Q_OS_LINUX
+
+        auto record_file_ = new QFile(record_file_name_);
+        if(!record_file_->open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            qDebug() << "file open error: " << record_file_name_;
+            return;
+        }
+        auto record_stream_ = new QTextStream(record_file_);
+        *record_stream_ << "No,Pos,Gol,Ft,V,C,T,Vol\n";
+        record_file_->close();
+    }
+}
+
+void MainWindow::onClearButtonClicked()
+{
+    record_data_count_ = 0;
+    record_section_data_.clear();
+    ui->recSizeLineEdit->setText(QString::number(record_data_count_));
+}
+
+void MainWindow::onDataAnalysisTimerTimeout()
+{
+    if(!isServoValidNow())
+        return;
+
+    if(!is_recording_)
+        return;
+    
+    record_data_count_++;
+    QString line = QString("%1,%2,%3,%4,%5,%6,%7,%8,END\n").arg(record_data_count_).arg(latest_status_.pos).arg(latest_status_.goal).arg(latest_status_.torque).arg(latest_status_.speed).arg(latest_status_.current).arg(latest_status_.temp).arg(latest_status_.voltage);
+    record_section_data_ += line;
+    const size_t section_size = 20 * file_write_interval_;
+
+    if(record_data_count_%section_size == 0)
+    {
+        auto record_file_ = new QFile(record_file_name_);
+
+        if(!record_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+        {
+            qDebug() << "file open error: " << record_file_name_;
+            return;
+        }
+
+        auto record_stream_ = new QTextStream(record_file_);
+        *record_stream_ << record_section_data_;
+        record_section_data_.clear();
+
+        record_file_->close();
+
+        ui->recSizeLineEdit->setText(QString::number(record_data_count_));
     }
 }
 

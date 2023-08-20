@@ -26,6 +26,7 @@ private:
     void setupServoLists();
     void setupServoControl();
     void setupAutoDebug();
+    void setupDataAnalysis();
     void setupProgramming();
 
     void setEnableComSettings(bool state);
@@ -41,6 +42,10 @@ private:
     void selectServoSeries(feetech_servo::ModelSeries series);
     const std::vector<feetech_servo::MemoryConfig>& getMemConfig(feetech_servo::ModelSeries series);
 
+    void writePos(int pos, int time, int speed, int acc);
+    void syncWritePos(int pos, int time, int speed, int acc);
+    void regWritePos(int pos, int time, int speed, int acc);
+
 private slots:
     // com
     void onPortSearchTimerTimeout();
@@ -55,11 +60,18 @@ private slots:
     void onGoalSliderValueChanged();
     void onSetBuggonClicked();
     void onTorqueEnableCheckBoxStateChanged();
+    void onModeRadioButtonsToggled(bool checked);
+    void onActionButtonClicked();
 
     // auto debug
     void onSweepButtonClicked();
     void onSetpButtonClicked();
     void onAutoDebugTimerTimeout();
+
+    // data analysis
+    void onExportButtonClicked();
+    void onClearButtonClicked();
+    void onDataAnalysisTimerTimeout();
 
     // programming
     void onProgTimerTimeout();
@@ -84,19 +96,34 @@ private:
     QTimer *servo_read_timer_;
     QTimer *auto_debug_timer_;
     QTimer *prog_timer_;
+    QTimer *data_analysis_timer_;
 
     bool is_searching_ = false;
+    std::vector<uint8_t> id_list_;
     int search_id_ = 0;
     struct
     {
         feetech_servo::ModelSeries model_;
         int id_ = -1;
     }select_servo_;
+    enum Mode
+    {
+        MODE_WRITE,
+        MODE_SYNC_WRITE,
+        MODE_REG_WRITE
+    };
+    Mode mode_ = MODE_WRITE;
     bool sweep_running_ = false;
     bool setp_running_ = false;
     int latest_auto_debug_goal_ = 0;
     bool setp_increase_ = true;
     bool is_mem_writing_ = false;
+
+    bool is_recording_ = false;
+    int file_write_interval_ = 0;
+    size_t record_data_count_ = 0;
+    QString record_file_name_;
+    QString record_section_data_;
 
     struct
     {
