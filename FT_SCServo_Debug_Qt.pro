@@ -11,13 +11,15 @@ CONFIG += c++17
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
-    scserial.cpp \
+    servo/scserial.cpp \
     simpegraphwiget.cpp
 
 HEADERS += \
     mainwindow.h \
-    scserial.h \
-    servo_mem_config.h \
+    servo/scserial.h \
+    servo/servo_types.h \
+    servo/sms_sts.h \
+    servo/scscl.h \
     simpegraphwiget.h
 
 FORMS += \
