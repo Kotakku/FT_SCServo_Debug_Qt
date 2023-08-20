@@ -46,6 +46,7 @@ MainWindow::~MainWindow()
     delete graph_timer_;
     delete serial_;
     delete scserial_;
+    delete scs_serial_;
     delete sms_sts_serial_;
     delete servo_list_model_;
     delete prog_mem_model_;
@@ -93,6 +94,10 @@ void MainWindow::setupServoLists()
 
 void MainWindow::setupServoControl()
 {
+    connect(ui->writeRadioButton, &QRadioButton::toggled, this, &MainWindow::onModeRadioButtonsToggled);
+    connect(ui->syncWriteRadioButton, &QRadioButton::toggled, this, &MainWindow::onModeRadioButtonsToggled);
+    connect(ui->regWriteRadioButton, &QRadioButton::toggled, this, &MainWindow::onModeRadioButtonsToggled);
+
     connect(ui->goalSlider, &QSlider::valueChanged, this, &MainWindow::onGoalSliderValueChanged);
 
     setIntRangeLineEdit(ui->accLineEdit, 0, std::numeric_limits<int>::max());
@@ -102,6 +107,7 @@ void MainWindow::setupServoControl()
     
     connect(ui->setPushButton, &QPushButton::clicked, this, &MainWindow::onSetBuggonClicked);
     connect(ui->torqueEnableCheckBox, &QCheckBox::stateChanged, this, &MainWindow::onTorqueEnableCheckBoxStateChanged);
+    connect(ui->actionPushButton, &QPushButton::clicked, this, &MainWindow::onActionButtonClicked);
 }
 
 void MainWindow::setupAutoDebug()
@@ -236,6 +242,48 @@ const std::vector<feetech_servo::MemoryConfig>& MainWindow::getMemConfig(feetech
     }
 }
 
+void MainWindow::writePos(int pos, int time, int speed, int acc)
+{
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        scs_serial_->write_pos(select_servo_.id_, pos, time, speed);
+    }
+    else
+    {
+        sms_sts_serial_->rotation_mode(select_servo_.id_);
+        sms_sts_serial_->write_pos_ex(select_servo_.id_, pos, speed, acc);
+    }
+}
+
+void MainWindow::syncWritePos(int pos, int time, int speed, int acc)
+{
+    std::vector<uint16_t> times(id_list_.size(), time);
+    std::vector<uint16_t> speeds(id_list_.size(), speed);
+    std::vector<uint8_t> accs(id_list_.size(), acc);
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        std::vector<uint16_t> goals(id_list_.size(), pos);
+        scs_serial_->sync_write_pos(id_list_.data(), id_list_.size(), goals.data(), times.data(), speeds.data());
+    }
+    else
+    {
+        std::vector<int16_t> goals(id_list_.size(), pos);
+        sms_sts_serial_->sync_write_pos_ex(id_list_.data(), id_list_.size(), goals.data(), speeds.data(), accs.data());
+    }
+}
+
+void MainWindow::regWritePos(int pos, int time, int speed, int acc)
+{
+    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    {
+        scs_serial_->reg_write_pos(select_servo_.id_, pos, time, speed);
+    }
+    else
+    {
+        sms_sts_serial_->rotation_mode(select_servo_.id_);
+        sms_sts_serial_->reg_write_pos_ex(select_servo_.id_, pos, speed, acc);
+    }
+}
 
 void MainWindow::onPortSearchTimerTimeout()
 {
@@ -294,6 +342,7 @@ void MainWindow::onSearchButtonClicked()
     {
         ui->SearchButton->setText("Stop");
         clearServoList();
+        id_list_.clear();
         search_id_ = 0;
         search_timer_->start(10);
         onSearchTimerTimeout();
@@ -328,6 +377,7 @@ void MainWindow::onSearchTimerTimeout()
             int mid = scserial_->read_model_number(ret);
             QString name = feetech_servo::getModelType(mid);
             appendServoList(ret, name);
+            id_list_.push_back(ret);
             select_servo_.id_ = ret;
             selectServoSeries(feetech_servo::getModelSeries(name));
         }
@@ -352,17 +402,20 @@ void MainWindow::onGoalSliderValueChanged()
     int goal = ui->goalSlider->value();
     ui->goalLineEdit->setText(QString::number(goal));
 
-    if(serial_->isOpen() == false || select_servo_.id_ < 0)
+    if(!isServoValidNow())
         return;
     
-    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    if(mode_ == MODE_REG_WRITE)
     {
-        scs_serial_->write_pos(select_servo_.id_, goal, 0, 0);
+        regWritePos(goal, 0, 0, 0);
     }
-    else
+    else if(mode_ == MODE_SYNC_WRITE)
     {
-        sms_sts_serial_->rotation_mode(select_servo_.id_);
-        sms_sts_serial_->write_pos_ex(select_servo_.id_, goal, 0, 0);
+        syncWritePos(goal, 0, 0, 0);
+    }
+    else if(mode_ == MODE_WRITE)
+    {
+        writePos(goal, 0, 0, 0);
     }
 }
 
@@ -371,20 +424,23 @@ void MainWindow::onSetBuggonClicked()
     int goal = ui->goalLineEdit->text().toUInt();
     int speed = ui->speedLineEdit->text().toUInt();
     int acc = ui->accLineEdit->text().toUInt();
-    // int time = ui->timeLineEdit->text().toUInt();
+    int time = ui->timeLineEdit->text().toUInt();
     ui->goalSlider->setValue(goal);
 
-    if(serial_->isOpen() == false || select_servo_.id_ < 0)
+    if(!isServoValidNow())
         return;
     
-    if(select_servo_.model_ == feetech_servo::ModelSeries::SCS)
+    if(mode_ == MODE_REG_WRITE)
     {
-        scs_serial_->write_pos(select_servo_.id_, goal, speed, acc);
+        regWritePos(goal, time, speed, acc);
     }
-    else
+    else if(mode_ == MODE_SYNC_WRITE)
     {
-        sms_sts_serial_->rotation_mode(select_servo_.id_);
-        sms_sts_serial_->write_pos_ex(select_servo_.id_, goal, speed, acc);
+        syncWritePos(goal, time, speed, acc);
+    }
+    else if(mode_ == MODE_WRITE)
+    {
+        writePos(goal, time, speed, acc);
     }
 }
 
@@ -400,6 +456,39 @@ void MainWindow::onTorqueEnableCheckBoxStateChanged()
     else
     {
         sms_sts_serial_->enable_torque(select_servo_.id_, ui->torqueEnableCheckBox->isChecked());
+    }
+}
+
+void MainWindow::onModeRadioButtonsToggled(bool checked)
+{
+    if(checked)
+    {
+        qDebug() << "mode changed";
+        if(ui->writeRadioButton->isChecked())
+        {
+            mode_ = MODE_WRITE;
+        }
+        else if(ui->syncWriteRadioButton->isChecked())
+        {
+            mode_ = MODE_SYNC_WRITE;
+        }
+        else if(ui->regWriteRadioButton->isChecked())
+        {
+            mode_ = MODE_REG_WRITE;
+        }
+
+        ui->actionPushButton->setEnabled(mode_ == MODE_REG_WRITE);
+    }
+}
+
+void MainWindow::onActionButtonClicked()
+{
+    if(!isServoValidNow())
+        return;
+
+    if(mode_ == MODE_REG_WRITE)
+    {
+        scserial_->reg_write_action(select_servo_.id_);
     }
 }
 

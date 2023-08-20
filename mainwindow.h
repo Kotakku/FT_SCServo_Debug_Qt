@@ -41,6 +41,10 @@ private:
     void selectServoSeries(feetech_servo::ModelSeries series);
     const std::vector<feetech_servo::MemoryConfig>& getMemConfig(feetech_servo::ModelSeries series);
 
+    void writePos(int pos, int time, int speed, int acc);
+    void syncWritePos(int pos, int time, int speed, int acc);
+    void regWritePos(int pos, int time, int speed, int acc);
+
 private slots:
     // com
     void onPortSearchTimerTimeout();
@@ -55,6 +59,8 @@ private slots:
     void onGoalSliderValueChanged();
     void onSetBuggonClicked();
     void onTorqueEnableCheckBoxStateChanged();
+    void onModeRadioButtonsToggled(bool checked);
+    void onActionButtonClicked();
 
     // auto debug
     void onSweepButtonClicked();
@@ -86,12 +92,20 @@ private:
     QTimer *prog_timer_;
 
     bool is_searching_ = false;
+    std::vector<uint8_t> id_list_;
     int search_id_ = 0;
     struct
     {
         feetech_servo::ModelSeries model_;
         int id_ = -1;
     }select_servo_;
+    enum Mode
+    {
+        MODE_WRITE,
+        MODE_SYNC_WRITE,
+        MODE_REG_WRITE
+    };
+    Mode mode_ = MODE_WRITE;
     bool sweep_running_ = false;
     bool setp_running_ = false;
     int latest_auto_debug_goal_ = 0;

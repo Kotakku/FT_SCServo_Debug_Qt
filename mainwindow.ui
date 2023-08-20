@@ -226,9 +226,9 @@
            </widget>
           </item>
           <item>
-           <widget class="QRadioButton" name="syncWriteradioButton">
+           <widget class="QRadioButton" name="syncWriteRadioButton">
             <property name="enabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="text">
              <string>Sync Write</string>
@@ -236,9 +236,9 @@
            </widget>
           </item>
           <item>
-           <widget class="QRadioButton" name="regWriteradioButton">
+           <widget class="QRadioButton" name="regWriteRadioButton">
             <property name="enabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="text">
              <string>Reg Write</string>
