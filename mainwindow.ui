@@ -698,7 +698,7 @@
      </widget>
      <widget class="QGroupBox" name="groupBox_6">
       <property name="enabled">
-       <bool>false</bool>
+       <bool>true</bool>
       </property>
       <property name="geometry">
        <rect>
@@ -747,7 +747,7 @@
          </widget>
         </item>
         <item row="1" column="3">
-         <widget class="QPushButton" name="pushButton_8">
+         <widget class="QPushButton" name="clearPushButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -773,21 +773,21 @@
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QLineEdit" name="lineEdit_16">
+         <widget class="QLineEdit" name="recTimeLineEdit">
           <property name="text">
            <string>30</string>
           </property>
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QLineEdit" name="lineEdit_17">
+         <widget class="QLineEdit" name="recFileNameLineEdit">
           <property name="text">
-           <string>record.txt</string>
+           <string>~/record.txt</string>
           </property>
          </widget>
         </item>
         <item row="0" column="3">
-         <widget class="QPushButton" name="pushButton_7">
+         <widget class="QPushButton" name="exportPushButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -806,7 +806,10 @@
          </widget>
         </item>
         <item row="1" column="2">
-         <widget class="QLineEdit" name="lineEdit_19">
+         <widget class="QLineEdit" name="recSizeLineEdit">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
           <property name="maximumSize">
            <size>
             <width>70</width>

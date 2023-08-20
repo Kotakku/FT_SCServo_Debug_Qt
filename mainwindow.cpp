@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QIntValidator>
 #include <QRegExpValidator>
+#include <QDir>
 #include <cmath>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -33,6 +34,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     setupServoControl();
     setupAutoDebug();
+    setupDataAnalysis();
 
     setupProgramming();
 
@@ -123,6 +125,17 @@ void MainWindow::setupAutoDebug()
 
     auto_debug_timer_ = new QTimer(this);
     connect(auto_debug_timer_, &QTimer::timeout, this, &MainWindow::onAutoDebugTimerTimeout);
+}
+
+void MainWindow::setupDataAnalysis()
+{
+    connect(ui->exportPushButton, &QPushButton::clicked, this, &MainWindow::onExportButtonClicked);
+    connect(ui->clearPushButton, &QPushButton::clicked, this, &MainWindow::onClearButtonClicked);
+    setIntRangeLineEdit(ui->recTimeLineEdit, 0, std::numeric_limits<int>::max());
+
+    data_analysis_timer_ = new QTimer(this);
+    connect(data_analysis_timer_, &QTimer::timeout, this, &MainWindow::onDataAnalysisTimerTimeout);
+    data_analysis_timer_->start(50);
 }
 
 void MainWindow::setupProgramming()
@@ -463,7 +476,6 @@ void MainWindow::onModeRadioButtonsToggled(bool checked)
 {
     if(checked)
     {
-        qDebug() << "mode changed";
         if(ui->writeRadioButton->isChecked())
         {
             mode_ = MODE_WRITE;
@@ -624,6 +636,108 @@ void MainWindow::onAutoDebugTimerTimeout()
     else
     {
         auto_debug_timer_->stop();
+    }
+}
+
+void MainWindow::onExportButtonClicked()
+{
+    if(!isServoValidNow())
+        return;
+    
+    if(is_recording_)
+    {
+        is_recording_ = false;
+        ui->exportPushButton->setText("Export");
+        ui->clearPushButton->setEnabled(true);
+
+        if(!record_section_data_.isEmpty())
+        {
+            auto record_file_ = new QFile(record_file_name_);
+
+            if(!record_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+            {
+                qDebug() << "file open error: " << record_file_name_;
+                return;
+            }
+
+            auto record_stream_ = new QTextStream(record_file_);
+            *record_stream_ << record_section_data_;
+            record_section_data_.clear();
+
+            record_file_->close();
+        }
+        ui->recSizeLineEdit->setText(QString::number(record_data_count_));
+    }
+    else
+    {
+        is_recording_ = true;
+        ui->exportPushButton->setText("Stop");
+        ui->clearPushButton->setEnabled(false);
+        record_section_data_.clear();
+        record_data_count_ = 0;
+        file_write_interval_ = ui->recTimeLineEdit->text().toUInt();
+        if(file_write_interval_ == 0)
+            file_write_interval_ = 1;
+
+        record_file_name_ = ui->recFileNameLineEdit->text();
+
+#if defined(Q_OS_LINUX)
+        QString home_path = QDir::homePath();
+        if(record_file_name_.startsWith("~"))
+        {
+            record_file_name_.replace("~", home_path);
+        }
+#endif // Q_OS_LINUX
+
+        auto record_file_ = new QFile(record_file_name_);
+        if(!record_file_->open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            qDebug() << "file open error: " << record_file_name_;
+            return;
+        }
+        auto record_stream_ = new QTextStream(record_file_);
+        *record_stream_ << "No,Pos,Gol,Ft,V,C,T,Vol\n";
+        record_file_->close();
+    }
+}
+
+void MainWindow::onClearButtonClicked()
+{
+    record_data_count_ = 0;
+    record_section_data_.clear();
+    ui->recSizeLineEdit->setText(QString::number(record_data_count_));
+}
+
+void MainWindow::onDataAnalysisTimerTimeout()
+{
+    if(!isServoValidNow())
+        return;
+
+    if(!is_recording_)
+        return;
+    
+    record_data_count_++;
+    QString line = QString("%1,%2,%3,%4,%5,%6,%7,%8,END\n").arg(record_data_count_).arg(latest_status_.pos).arg(latest_status_.goal).arg(latest_status_.torque).arg(latest_status_.speed).arg(latest_status_.current).arg(latest_status_.temp).arg(latest_status_.voltage);
+    record_section_data_ += line;
+    const size_t section_size = 20 * file_write_interval_;
+
+    if(record_data_count_%section_size == 0)
+    {
+        auto record_file_ = new QFile(record_file_name_);
+
+        if(!record_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+        {
+            qDebug() << "file open error: " << record_file_name_;
+            return;
+        }
+
+        auto record_stream_ = new QTextStream(record_file_);
+        *record_stream_ << record_section_data_;
+        record_section_data_.clear();
+
+        record_file_->close();
+
+        ui->recSizeLineEdit->setText(QString::number(record_data_count_));
     }
 }
 

@@ -26,6 +26,7 @@ private:
     void setupServoLists();
     void setupServoControl();
     void setupAutoDebug();
+    void setupDataAnalysis();
     void setupProgramming();
 
     void setEnableComSettings(bool state);
@@ -67,6 +68,11 @@ private slots:
     void onSetpButtonClicked();
     void onAutoDebugTimerTimeout();
 
+    // data analysis
+    void onExportButtonClicked();
+    void onClearButtonClicked();
+    void onDataAnalysisTimerTimeout();
+
     // programming
     void onProgTimerTimeout();
     void onMemoryTableSelection();
@@ -90,6 +96,7 @@ private:
     QTimer *servo_read_timer_;
     QTimer *auto_debug_timer_;
     QTimer *prog_timer_;
+    QTimer *data_analysis_timer_;
 
     bool is_searching_ = false;
     std::vector<uint8_t> id_list_;
@@ -111,6 +118,12 @@ private:
     int latest_auto_debug_goal_ = 0;
     bool setp_increase_ = true;
     bool is_mem_writing_ = false;
+
+    bool is_recording_ = false;
+    int file_write_interval_ = 0;
+    size_t record_data_count_ = 0;
+    QString record_file_name_;
+    QString record_section_data_;
 
     struct
     {
