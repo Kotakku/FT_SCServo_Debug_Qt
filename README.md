@@ -51,9 +51,6 @@ bash create_deb.bash
 
 
 ## ⚠️Unported Features⚠️
-- Sync Write
-- Reg Write
-- Data analysis
 - Upgrade tab & features
 - PWM tabs & features
 
